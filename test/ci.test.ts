@@ -9,7 +9,6 @@ import { AZURE_PROVIDER, OPENAI_COMPATIBLE_PROVIDER, providers } from "../models
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const actionDir = join(__dirname, "..");
-const rootDir = join(actionDir, "..");
 
 type WorkflowJob = {
   "runs-on": string;
@@ -25,9 +24,9 @@ type Workflow = {
   jobs: Record<string, WorkflowJob>;
 };
 
-const rootWorkflow = parse(
-  readFileSync(join(rootDir, ".github/workflows/test.yml"), "utf-8")
-) as Workflow;
+// This public action repository is a standalone checkout, not the private
+// application monorepo. Validate the workflow actually shipped here against
+// explicit expectations rather than a parent file absent from the fork.
 const actionWorkflow = parse(
   readFileSync(join(actionDir, ".github/workflows/test.yml"), "utf-8")
 ) as Workflow;
@@ -81,8 +80,8 @@ const expectedAgentEnvVars = [
 const expectedAgnosticEnvVars = ["ANTHROPIC_API_KEY", "GITHUB_TOKEN"].sort();
 
 describe("ci workflow consistency", () => {
-  it("workflow names match", () => {
-    expect(rootWorkflow.name).toBe(actionWorkflow.name);
+  it("uses the expected workflow name", () => {
+    expect(actionWorkflow.name).toBe("Test");
   });
 
   it("no duplicate test names across directories", () => {
@@ -92,13 +91,11 @@ describe("ci workflow consistency", () => {
   });
 
   describe("cross-agent tests", () => {
-    const rootJob = rootWorkflow.jobs["action-agents"];
     const actionJob = actionWorkflow.jobs.agents;
 
-    it("root agents matrix is wired to the dynamic matrix output", () => {
-      const include = rootJob.strategy?.matrix.include;
-      expect(typeof include).toBe("string");
-      expect(include as string).toContain("fromJSON(needs.changes.outputs.matrix).agents");
+    it("agent matrix has no duplicate agents", () => {
+      const matrix = actionJob.strategy?.matrix.agent as string[];
+      expect(new Set(matrix).size).toBe(matrix.length);
     });
 
     it("action agent matrix matches agents map", () => {
@@ -113,60 +110,60 @@ describe("ci workflow consistency", () => {
       );
     });
 
-    it("permissions match between root and action", () => {
-      expect(rootJob.permissions).toEqual(actionJob.permissions);
+    it("uses only read access and runner identity permissions", () => {
+      expect(actionJob.permissions).toEqual({ contents: "read", "id-token": "write" });
     });
 
-    it("timeout-minutes match between root and action", () => {
-      expect(rootJob["timeout-minutes"]).toEqual(actionJob["timeout-minutes"]);
+    it("bounds agent test duration", () => {
+      expect(actionJob["timeout-minutes"]).toBe(20);
     });
 
-    it("env vars match between root and action", () => {
-      expect(getEnvVarNames(rootJob)).toEqual(getEnvVarNames(actionJob));
+    it("does not hide coverage behind invalid matrix exclusions", () => {
+      const exclusions = actionJob.strategy?.matrix.exclude as { agent: string; test: string }[];
+      for (const entry of exclusions) {
+        expect(expectedAgents).toContain(entry.agent);
+        expect(crossagentTests).toContain(entry.test);
+      }
     });
 
     it("env vars cover all provider API keys", () => {
-      expect(getEnvVarNames(rootJob)).toEqual(expectedAgentEnvVars);
+      expect(getEnvVarNames(actionJob)).toEqual(expectedAgentEnvVars);
     });
 
-    it("fail-fast is enabled in both", () => {
-      expect(rootJob.strategy?.["fail-fast"]).toBe(true);
+    it("fail-fast is enabled", () => {
       expect(actionJob.strategy?.["fail-fast"]).toBe(true);
     });
   });
 
   describe("agnostic tests", () => {
-    const rootJob = rootWorkflow.jobs["action-agnostic"];
     const actionJob = actionWorkflow.jobs.agnostic;
 
-    it("root agnostic matrix is wired to the dynamic matrix output", () => {
-      const include = rootJob.strategy?.matrix.include;
-      expect(typeof include).toBe("string");
-      expect(include as string).toContain("fromJSON(needs.changes.outputs.matrix).agnostic");
+    it("agnostic matrix has no duplicate tests", () => {
+      const matrix = actionJob.strategy?.matrix.test as string[];
+      expect(new Set(matrix).size).toBe(matrix.length);
     });
 
     it("action test matrix matches agnostic/ directory", () => {
       expect((actionJob.strategy?.matrix.test as string[])?.slice().sort()).toEqual(agnosticTests);
     });
 
-    it("permissions match between root and action", () => {
-      expect(rootJob.permissions).toEqual(actionJob.permissions);
+    it("uses only read access and runner identity permissions", () => {
+      expect(actionJob.permissions).toEqual({ contents: "read", "id-token": "write" });
     });
 
-    it("timeout-minutes match between root and action", () => {
-      expect(rootJob["timeout-minutes"]).toEqual(actionJob["timeout-minutes"]);
+    it("bounds agnostic test duration", () => {
+      expect(actionJob["timeout-minutes"]).toBe(15);
     });
 
-    it("env vars match between root and action", () => {
-      expect(getEnvVarNames(rootJob)).toEqual(getEnvVarNames(actionJob));
+    it("runs every agnostic matrix entry once", () => {
+      expect(actionJob.strategy?.matrix.exclude).toBeUndefined();
     });
 
     it("env vars are correct for agnostic tests", () => {
-      expect(getEnvVarNames(rootJob)).toEqual(expectedAgnosticEnvVars);
+      expect(getEnvVarNames(actionJob)).toEqual(expectedAgnosticEnvVars);
     });
 
-    it("fail-fast is enabled in both", () => {
-      expect(rootJob.strategy?.["fail-fast"]).toBe(true);
+    it("fail-fast is enabled", () => {
       expect(actionJob.strategy?.["fail-fast"]).toBe(true);
     });
   });

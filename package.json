@@ -40,7 +40,7 @@
     "@openai/codex-sdk": "0.159.2",
     "@opencode-ai/sdk": "1.18.29",
     "@standard-schema/spec": "1.1.0",
-    "@toon-format/toon": "^1.0.0",
+    "@toon-format/toon": "2.3.1",
     "@types/node": "^24.7.2",
     "@types/semver": "^7.7.1",
     "@types/turndown": "^5.0.5",
@@ -102,5 +102,10 @@
     },
     "./package.json": "./package.json"
   },
-  "packageManager": "pnpm@10.27.0+sha512.72d699da16b1179c14ba9e64dc71c9a40988cbdc65c264cb0e489db7de917f20dcf4d64d8723625f2969ba52d4b7e2a1170682d9ac2a5dcaeaab732b7e16f04a"
+  "packageManager": "pnpm@10.27.0+sha512.72d699da16b1179c14ba9e64dc71c9a40988cbdc65c264cb0e489db7de917f20dcf4d64d8723625f2969ba52d4b7e2a1170682d9ac2a5dcaeaab732b7e16f04a",
+  "pnpm": {
+    "overrides": {
+      "@actions/http-client>undici": "6.28.1"
+    }
+  }
 }
